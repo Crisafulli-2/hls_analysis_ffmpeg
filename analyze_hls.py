@@ -3,6 +3,7 @@ import json
 import sys
 import requests
 import re
+import os
 
 def analyze_bitrate(input_file):
     """Analyze bitrate using FFprobe"""
@@ -24,32 +25,77 @@ def analyze_bitrate(input_file):
     except Exception as e:
         return {"Error": f"Bitrate analysis failed: {str(e)}"}
 
+def analyze_m3u8(input_file):
+    """Analyze M3U8 file and its segments"""
+    try:
+        if input_file.startswith("http"):
+            response = requests.get(input_file, timeout=10)
+            response.raise_for_status()
+            content = response.text
+        else:
+            with open(input_file, "r") as file:
+                content = file.read()
+        
+        # Extract BANDWIDTH, CODECS, RESOLUTION, FRAME-RATE, and VIDEO-RANGE from the M3U8 content
+        stream_info = re.findall(r'#EXT-X-STREAM-INF:BANDWIDTH=(\d+),CODECS="([^"]+)",RESOLUTION=(\d+x\d+),FRAME-RATE=(\d+),VIDEO-RANGE=(\w+)', content)
+        
+        # Initialize lists to store extracted values
+        bitrates = []
+        codecs = []
+        resolutions = []
+        frame_rates = []
+        video_ranges = []
+
+        # Extract values from the stream information
+        for bandwidth, codec, resolution, frame_rate, video_range in stream_info:
+            bitrates.append(int(bandwidth))
+            codecs.append(codec)
+            resolutions.append(resolution)
+            frame_rates.append(frame_rate)
+            video_ranges.append(video_range)
+
+        # Calculate average, highest, and lowest bitrate in Mbps
+        avg_bitrate = sum(bitrates) / len(bitrates) / 1_000_000 if bitrates else "Unknown"
+        highest_bitrate = max(bitrates) / 1_000_000 if bitrates else "Unknown"
+        lowest_bitrate = min(bitrates) / 1_000_000 if bitrates else "Unknown"
+        # Use the first value for codecs, resolution, frame rate, and video range as an example
+        codec = codecs[0] if codecs else "Unknown"
+        resolution = resolutions[0] if resolutions else "Unknown"
+        frame_rate = frame_rates[0] if frame_rates else "Unknown"
+        video_range = video_ranges[0] if video_ranges else "Unknown"
+
+        return {
+            "Highest Bitrate (Mbps)": highest_bitrate,
+            "Average Bitrate (Mbps)": avg_bitrate,
+            "Lowest Bitrate (Mbps)": lowest_bitrate,
+            "Codec": codec,
+            "Resolution": resolution,
+            "Frame Rate": frame_rate,
+            "Video Range": video_range
+        }
+    except Exception as e:
+        return {"Error": f"M3U8 analysis failed: {str(e)}"}
+
 def check_network(input_file):
     """Validate HLS playlist and segments"""
-
-    # Detect if input is a URL or a local file
     if input_file.startswith("http"):
         try:
-            # Fetch the M3U8 file from the URL
             response = requests.get(input_file, timeout=10)
-            response.raise_for_status()  # Raise error if response is not 200
+            response.raise_for_status()
             content = response.text
         except requests.exceptions.RequestException as e:
             return {"Error": f"Failed to fetch M3U8 file: {str(e)}"}
     else:
         try:
-            # Read the M3U8 file from the local file system
             with open(input_file, "r") as file:
                 content = file.read()
         except FileNotFoundError:
             return {"Error": f"File not found: {input_file}"}
 
     try:
-        # Extract segment URLs from the M3U8 content
         segment_urls = re.findall(r'(https?://[^\s]+\.ts)', content)
         failed_segments = []
 
-        # Check the availability of each segment URL
         for url in segment_urls:
             response = requests.head(url)
             if response.status_code != 200:
@@ -63,30 +109,47 @@ def check_network(input_file):
         return {"Error": f"Network validation failed: {str(e)}"}
 
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: python3 analyze_hls.py <input file>")
+    # Load the M3U8 URL from the config file
+    with open('config.json', 'r') as config_file:
+        config = json.load(config_file)
+        input_file = config.get('m3u8_url')
+
+    if not input_file:
+        print("M3U8 URL not found in config file.")
         sys.exit(1)
 
-    input_file = sys.argv[1]
     file_ext = input_file.split('.')[-1]
 
     results = {}
 
-    # Analyze bitrate for supported video file types
     if file_ext in ["mp4", "mpeg", "ts"]:
         results.update(analyze_bitrate(input_file))
     elif file_ext == "m3u8":
-        results.update(analyze_bitrate(input_file))
+        results.update(analyze_m3u8(input_file))
         results.update(check_network(input_file))
     else:
         print("Unsupported file type. Only MP4, MPEG-2, and M3U8 are supported.")
         sys.exit(1)
 
-    # Save the analysis results to a JSON file
-    with open("analysis_output.json", "w") as f:
+    output_path = os.path.join(os.path.dirname(__file__), 'hls_metrics.json')
+    with open(output_path, "w") as f:
         json.dump(results, f, indent=4)
 
     print("Analysis complete! Results saved to analysis_output.json.")
-
+    # print(json.dumps(results, indent=4))
+    output_path = os.path.join(os.path.dirname(__file__), 'analyze_hls_output.json')
+    try:
+        with open(output_path, 'r+') as f:
+            data = json.load(f)
+            data['Test Results'] = results
+            f.seek(0)
+            json.dump(data, f, indent=4)
+            f.truncate()
+    except FileNotFoundError:
+        with open(output_path, 'w') as f:
+            data = {'Test Results': results}
+            json.dump(data, f, indent=4)
+    except Exception as e:
+        print(f"Failed to write to output file: {e}")
 if __name__ == "__main__":
     main()
