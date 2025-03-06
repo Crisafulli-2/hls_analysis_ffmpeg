@@ -36,31 +36,7 @@ class TestLoad(unittest.TestCase):
         # Calculate the duration of the test
         duration = end_time - start_time
 
-        # Write the result to the output file
-        output_path = os.path.join(os.path.dirname(__file__), '../../analysis_output.json')
-        try:
-            with open(output_path, "r+") as f:
-                data = json.load(f)
-                # Add the load test results to the JSON data
-                data["Load Test"] = {
-                    "Runtime (seconds)": duration,
-                    "Success": success
-                }
-                # Write the updated JSON data back to the file
-                f.seek(0)
-                json.dump(data, f, indent=4)
-                f.truncate()
-        except FileNotFoundError:
-            with open(output_path, "w") as f:
-                data = {
-                    "Load Test": {
-                        "Runtime (seconds)": duration,
-                        "Success": success
-                    }
-                }
-                json.dump(data, f, indent=4)
-        except Exception as e:
-            self.fail(f"Failed to write to output file: {e}")
+
 
 if __name__ == "__main__":
     unittest.main()
