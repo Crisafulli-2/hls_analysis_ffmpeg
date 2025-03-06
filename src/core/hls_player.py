@@ -572,17 +572,17 @@ class HLSPlayer:
             metrics['InitialBufferingTime'] = round(metrics['startupTime'], 2)
         
         return metrics
-    
+        
     def save_metrics_to_json(self):
-        """Save the current metrics to the analyze_hls_output.json file"""
+        """Save the current metrics to the analysis_output.json file"""
         if not self.available_metrics:
             print("No metrics available to save")
             return
             
         try:
-            # Get the path to the output JSON file
+            # Get the path to the output JSON file in the output directory
             output_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 
-                                      'analyze_hls_output.json')
+                                      'output', 'analysis_output.json')
             
             print(f"Saving metrics to {output_path}")
             
@@ -603,7 +603,7 @@ class HLSPlayer:
             # Write the updated data back to the file
             with open(output_path, 'w') as f:
                 json.dump(data, f, indent=4)
-                
+            
             print("Metrics saved to JSON file")
         except Exception as e:
             print(f"Error saving metrics to JSON: {e}")
