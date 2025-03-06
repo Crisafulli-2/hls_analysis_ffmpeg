@@ -146,6 +146,35 @@ git push -u origin feature-name
 - **Stream Analysis**: Works on all platforms (macOS, Linux, Windows) with FFmpeg installed
 - **Native Playback**: macOS only (requires PyObjC and AVFoundation)
 
+## Future Scope
+
+### Performance and Resource Optimization
+- **HTTP Session Reuse**: Implement connection pooling to reduce overhead when making multiple requests to the same server
+- **Parallel Downloads**: Use async I/O or threading to download multiple segments simultaneously
+- **Caching**: Add intelligent caching of manifests and segments to reduce redundant downloads
+- **Smart Retry Logic**: Implement exponential backoff for retries to handle temporary network issues efficiently
+
+### Testing Enhancements
+- **Unit Test Coverage**: Develop comprehensive unit tests for each component (parser, downloader, analyzer)
+- **Mocking External Services**: Use mocking frameworks to simulate different server behaviors and edge cases
+- **Parameterized Testing**: Add tests with different input types to ensure robustness
+- **CI Integration**: Set up GitHub Actions workflow for automated testing on every push
+- **Coverage Analysis**: Add code coverage reporting to identify untested parts of the codebase
+
+### Feature Expansion
+- **Live Stream Analytics**: Add specialized metrics for live streams (latency, segment availability)
+- **Multi-CDN Support**: Track performance across different CDNs for the same content
+- **Adaptive Bitrate Analysis**: Analyze ABR performance under different network conditions
+- **Video Quality Metrics**: Integrate with tools to assess perceptual quality metrics (VMAF, PSNR)
+- **Historical Data Tracking**: Store and visualize performance trends over time
+
+### User Experience
+- **Interactive Dashboard**: Build a web-based dashboard for visualizing stream metrics
+- **Alerting System**: Implement alerts for performance degradation or streaming issues
+- **CLI Improvements**: Enhance command line interface with more options and better output formatting
+- **Batch Processing**: Add support for analyzing multiple streams in batch mode
+
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
