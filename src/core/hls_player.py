@@ -34,6 +34,36 @@ if is_macos:
 else:
     print("Warning: macOS is required for native AVFoundation HLS player")
 
+# Global registry to keep track of all player instances
+_player_registry = []
+
+# Function to clean up all player instances
+def cleanup_all_players():
+    """Clean up all registered player instances"""
+    global _player_registry
+    for player in _player_registry:
+        try:
+            player.cleanup()
+        except:
+            pass
+    _player_registry = []
+
+# Register global signal handlers
+def setup_global_signal_handlers():
+    """Set up global handlers for termination signals"""
+    if is_macos:
+        signal.signal(signal.SIGINT, handle_global_signal)
+        signal.signal(signal.SIGTERM, handle_global_signal)
+
+def handle_global_signal(signum, frame):
+    """Global handler for termination signals"""
+    print(f"\nReceived signal {signum}, shutting down all players...")
+    cleanup_all_players()
+    sys.exit(0)
+
+# Set up global handlers
+setup_global_signal_handlers()
+
 # Create an observer class to handle notifications properly
 if is_macos:
     class PlayerObserver(NSObject):
@@ -83,9 +113,14 @@ class HLSPlayer:
         self.available_metrics = set()
         # Add a flag to track if we're running
         self.is_running = True
+        self.is_cleaned_up = False
         
         # Create an observer for notifications
         self.observer = PlayerObserver.alloc().initWithCallback_(self.playback_finished)
+        
+        # Register this instance
+        global _player_registry
+        _player_registry.append(self)
         
         # Create a window for playback
         self.create_player_view()
@@ -96,35 +131,57 @@ class HLSPlayer:
     
     def setup_signal_handlers(self):
         """Set up handlers for termination signals"""
-        signal.signal(signal.SIGINT, self.handle_signal)
-        signal.signal(signal.SIGTERM, self.handle_signal)
-        
-    def handle_signal(self, signum, frame):
-        """Handle termination signals"""
-        print(f"\nReceived signal {signum}, shutting down...")
-        self.save_metrics_to_json()
-        self.cleanup()
-        sys.exit(0)
+        # Note: Global handlers are already set up
+        pass
         
     def cleanup(self):
-        """Clean up resources"""
+        """Clean up resources properly to avoid spinning wheel issues"""
+        if self.is_cleaned_up:  # Prevent duplicate cleanup
+            return
+            
         print("Cleaning up resources...")
         self.is_running = False
+        self.is_cleaned_up = True
         
-        # Stop timer if running
-        if hasattr(self, 'timer') and self.timer:
-            self.timer.invalidate()
+        try:
+            # First, save metrics to JSON if we have any
+            if self.available_metrics:
+                self.save_metrics_to_json()
+                
+            # Stop timer first
+            if hasattr(self, 'timer') and self.timer:
+                self.timer.invalidate()
+                self.timer = None
+                
+            # Stop and remove any notification observers
+            if is_macos:
+                NSNotificationCenter.defaultCenter().removeObserver_(self)
             
-        # Stop playback
-        if self.player:
-            self.player.pause()
-            self.player.replaceCurrentItemWithPlayerItem_(None)
+            # Explicitly remove player layer
+            if hasattr(self, 'player_layer') and self.player_layer:
+                self.player_layer.setPlayer_(None)
+                
+            # Stop playback and clear the player
+            if self.player:
+                self.player.pause()
+                self.player.replaceCurrentItemWithPlayerItem_(None)
+                self.player = None
             
-        # Close window if running in UI mode
-        if hasattr(self, 'window'):
-            from AppKit import NSApplication
-            NSApplication.sharedApplication().terminate_(None)
+            self.current_item = None
             
+            # Close window if available
+            if hasattr(self, 'window') and self.window:
+                self.window.close()
+                self.window = None
+                
+            # Remove from registry
+            global _player_registry
+            if self in _player_registry:
+                _player_registry.remove(self)
+                
+        except Exception as e:
+            print(f"Error during cleanup: {e}")
+        
         print("Cleanup complete")
     
     def playback_finished(self, notification):
@@ -182,10 +239,33 @@ class HLSPlayer:
             print(f"Error creating player view: {e}")
     
     def windowWillClose_(self, notification):
-        """Handle window closing"""
+        """Handle window closing with proper cleanup"""
         print("Window is closing, cleaning up...")
         self.save_metrics_to_json()
+        
+        # Schedule cleanup to run after this method returns
+        NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
+            0.1,  # Short delay to let the close animation finish
+            self,
+            "performTermination:",
+            None,
+            False
+        )
+
+    def performTermination_(self, timer):
+        """Perform actual termination after a short delay"""
         self.cleanup()
+        
+        # If this is the last player instance, terminate the application
+        if not _player_registry:
+            from AppKit import NSApplication
+            NSApplication.sharedApplication().terminate_(None)
+            
+            # Force quit after a delay if normal termination doesn't work
+            from Foundation import NSProcessInfo
+            import os
+            pid = NSProcessInfo.processInfo().processIdentifier()
+            threading.Timer(1.0, lambda: os.system(f"kill -TERM {pid}")).start()
         
     def load_stream(self, url: str) -> bool:
         """
@@ -234,7 +314,7 @@ class HLSPlayer:
                 
             attempts += 1
             
-            if attempts < max_attempts:
+            if attempts < max_attempts and self.is_running:
                 print(f"Waiting {delay} seconds before next attempt...")
                 time.sleep(delay)
     
@@ -245,7 +325,7 @@ class HLSPlayer:
         Returns:
             Set of available metric names
         """
-        if not is_macos or not self.current_item:
+        if not is_macos or not self.current_item or not self.is_running:
             return set()
         
         try:
@@ -318,7 +398,7 @@ class HLSPlayer:
     
     def get_available_bitrates(self) -> List[int]:
         """Return list of available bitrates in the stream"""
-        if not is_macos or not self.current_item:
+        if not is_macos or not self.current_item or not self.is_running:
             return []
             
         bitrates = []
@@ -348,7 +428,7 @@ class HLSPlayer:
         Args:
             bitrate (int): Maximum bitrate in bits per second
         """
-        if is_macos and self.player:
+        if is_macos and self.player and self.is_running:
             self.player.setPreferredPeakBitRate_(bitrate)
     
     def get_current_stream_info(self) -> Dict:
@@ -358,7 +438,7 @@ class HLSPlayer:
         Returns:
             Dict containing available streaming metrics
         """
-        if not is_macos or not self.current_item:
+        if not is_macos or not self.current_item or not self.is_running:
             return self.stream_metrics
             
         try:
@@ -391,13 +471,13 @@ class HLSPlayer:
 
     def start_playback(self):
         """Start or resume playback"""
-        if is_macos and self.player:
+        if is_macos and self.player and self.is_running:
             self.player.play()
             print("Playback started")
     
     def pause_playback(self):
         """Pause playback"""
-        if is_macos and self.player:
+        if is_macos and self.player and self.is_running:
             self.player.pause()
             print("Playback paused")
     
@@ -408,7 +488,7 @@ class HLSPlayer:
         Args:
             time_in_seconds (float): Time to seek to in seconds
         """
-        if is_macos and self.player:
+        if is_macos and self.player and self.is_running:
             # Create CMTime for seeking
             time_scale = 1000  # Higher precision
             try:
@@ -528,11 +608,27 @@ class HLSPlayer:
         except Exception as e:
             print(f"Error saving metrics to JSON: {e}")
     
+    def applicationWillTerminate_(self, notification):
+        """Handle application termination notification"""
+        print("Application is terminating...")
+        self.save_metrics_to_json()
+        self.cleanup()
+    
     def run_app_loop(self):
-        """Run the application event loop"""
+        """Run the application event loop with improved termination handling"""
         if is_macos:
             try:
                 from AppKit import NSApplication
+                
+                # Set an AppKit terminate notification handler
+                NSNotificationCenter.defaultCenter().addObserver_selector_name_object_(
+                    self,
+                    "applicationWillTerminate:",
+                    "NSApplicationWillTerminateNotification",
+                    None
+                )
+                
+                # Run the application
                 NSApplication.sharedApplication().run()
             except KeyboardInterrupt:
                 print("\nKeyboard interrupt received, shutting down...")
@@ -586,6 +682,8 @@ def main():
             player.save_metrics_to_json()
         finally:
             player.cleanup()
+            # Ensure all players are cleaned up
+            cleanup_all_players()
     
     print("HLS Player terminated")
 
