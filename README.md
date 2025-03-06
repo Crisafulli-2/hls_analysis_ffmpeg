@@ -153,8 +153,8 @@ Metrics are saved to `analyze_hls_output.json` in the following format:
         "PlayerEvents": {
             "PlayCount": 8,
             "PauseCount": 7,
-            "PlayEvents": [ ... ],
-            "PauseEvents": [ ... ]
+            "PlayEvents": [],
+            "PauseEvents": []
         }
     }
 }
