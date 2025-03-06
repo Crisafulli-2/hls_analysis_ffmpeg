@@ -65,7 +65,7 @@ pip install -r requirements.txt
 ### Analyzing a Stream with FFprobe
 
 ```bash
-python src/analyze_hls.py
+python3 src/analyze_hls.py
 ```
 
 This will analyze the HLS stream specified in `config.json` and output technical details to the terminal and the `analyze_hls_output.json` file.
@@ -73,7 +73,7 @@ This will analyze the HLS stream specified in `config.json` and output technical
 ### Playing a Stream with AVFoundation (macOS only)
 
 ```bash
-python src/core/hls_player.py
+python3 src/core/hls_player.py
 ```
 
 This will:
@@ -85,7 +85,7 @@ This will:
 ### Running Tests
 
 ```bash
-python run_tests.py
+python3 run_tests.py
 ```
 
 ## Metrics Collected
