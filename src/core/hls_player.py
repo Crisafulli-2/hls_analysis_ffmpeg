@@ -31,8 +31,10 @@ if is_macos:
     objc.loadBundle('CoreMedia', globals(), 
                    bundle_path=objc.pathForFramework('/System/Library/Frameworks/CoreMedia.framework'))
     from AVFoundation import AVPlayer, AVPlayerItem, AVAsset, AVPlayerLayer
-else:
-    print("Warning: macOS is required for native AVFoundation HLS player")
+    from AppKit import NSWindow, NSView, NSRect, NSApp, NSApplication
+    from AppKit import NSApplicationActivationPolicyRegular, NSWindowCollectionBehaviorMoveToActiveSpace
+    from AppKit import NSButton, NSButtonTypeToggle, NSButtonTypeMomentaryLight, NSFont, NSMakeRect
+    from AppKit import NSBezelStyleRounded, NSOnState, NSOffState
 
 # Global registry to keep track of all player instances
 _player_registry = []
@@ -44,25 +46,20 @@ def cleanup_all_players():
     for player in _player_registry:
         try:
             player.cleanup()
-        except:
+        except Exception:
             pass
     _player_registry = []
 
-# Register global signal handlers
-def setup_global_signal_handlers():
-    """Set up global handlers for termination signals"""
-    if is_macos:
-        signal.signal(signal.SIGINT, handle_global_signal)
-        signal.signal(signal.SIGTERM, handle_global_signal)
-
-def handle_global_signal(signum, frame):
-    """Global handler for termination signals"""
+# Signal handler for graceful termination
+def handle_signal(signum, frame):
+    """Handle termination signals"""
     print(f"\nReceived signal {signum}, shutting down all players...")
     cleanup_all_players()
     sys.exit(0)
 
-# Set up global handlers
-setup_global_signal_handlers()
+# Set up global signal handlers
+signal.signal(signal.SIGINT, handle_signal)
+signal.signal(signal.SIGTERM, handle_signal)
 
 # Create an observer class to handle notifications properly
 if is_macos:
@@ -77,12 +74,11 @@ if is_macos:
             self.callback(notification)
 
 class HLSPlayer:
-    # List of known useful AVFoundation metrics to look for
+    # List of most important AVFoundation metrics to look for
     KNOWN_AV_METRICS = [
         # Bitrate metrics
-        'indicatedBitrate', 'indicatedAverageBitrate', 'observedBitrate', 
-        'observedMaxBitrate', 'observedMinBitrate', 'averageVideoBitrate', 
-        'averageAudioBitrate', 'observedBitrateStandardDeviation',
+        'indicatedBitrate', 'observedBitrate', 'averageVideoBitrate', 
+        'averageAudioBitrate',
         # Duration metrics
         'durationWatched', 'transferDuration', 'startupTime',
         # Stats metrics
@@ -90,9 +86,9 @@ class HLSPlayer:
         'numberOfStalls', 'numberOfServerAddressChanges',
         'numberOfMediaRequests', 'numberOfDroppedVideoFrames',
         # Segment metrics
-        'segmentsDownloadedDuration', 'playbackType',
+        'segmentsDownloadedDuration',
         # Server metrics
-        'serverAddress', 'URI', 'playbackSessionID'
+        'serverAddress', 'playbackSessionID'
     ]
     
     def __init__(self):
@@ -103,10 +99,13 @@ class HLSPlayer:
             
         self.player = AVPlayer.alloc().init()
         self.current_item = None
-        self.stream_metrics = {
-            'current_bitrate': 0,
-            'buffer_size': 0,
-            'segments_loaded': 0
+        # Remove hardcoded metrics
+        self.stream_metrics = {}
+        
+        # Track player events for play/pause
+        self.player_events = {
+            "PlayEvents": [],
+            "PauseEvents": []
         }
         
         # For storing discovered metrics
@@ -119,21 +118,12 @@ class HLSPlayer:
         self.observer = PlayerObserver.alloc().initWithCallback_(self.playback_finished)
         
         # Register this instance
-        global _player_registry
         _player_registry.append(self)
         
         # Create a window for playback
         self.create_player_view()
         print("HLSPlayer initialized")
-        
-        # Set up signal handlers for clean termination
-        self.setup_signal_handlers()
     
-    def setup_signal_handlers(self):
-        """Set up handlers for termination signals"""
-        # Note: Global handlers are already set up
-        pass
-        
     def cleanup(self):
         """Clean up resources properly to avoid spinning wheel issues"""
         if self.is_cleaned_up:  # Prevent duplicate cleanup
@@ -175,7 +165,6 @@ class HLSPlayer:
                 self.window = None
                 
             # Remove from registry
-            global _player_registry
             if self in _player_registry:
                 _player_registry.remove(self)
                 
@@ -188,21 +177,112 @@ class HLSPlayer:
         """Callback for when playback finishes"""
         print("Stream playback completed")
         self.save_metrics_to_json()
+    
+    def create_control_buttons(self):
+        """Create playback control buttons"""
+        button_height = 30
+        button_width = 90
+        spacing = 10
+        bottom_margin = 15
+        
+        # Calculate positions
+        window_width = self.window.frame().size.width
+        center_x = window_width / 2
+        
+        # Play button
+        play_button = NSButton.alloc().initWithFrame_(
+            NSMakeRect(center_x - button_width - spacing, bottom_margin, button_width, button_height)
+        )
+        play_button.setBezelStyle_(NSBezelStyleRounded)
+        play_button.setTitle_("Play")
+        play_button.setAction_("playButtonClicked:")
+        play_button.setTarget_(self)
+        play_button.setFont_(NSFont.boldSystemFontOfSize_(14))
+        
+        # Pause button
+        pause_button = NSButton.alloc().initWithFrame_(
+            NSMakeRect(center_x, bottom_margin, button_width, button_height)
+        )
+        pause_button.setBezelStyle_(NSBezelStyleRounded)
+        pause_button.setTitle_("Pause")
+        pause_button.setAction_("pauseButtonClicked:")
+        pause_button.setTarget_(self)
+        pause_button.setFont_(NSFont.boldSystemFontOfSize_(14))
+        
+        # Stop button
+        stop_button = NSButton.alloc().initWithFrame_(
+            NSMakeRect(center_x + button_width + spacing, bottom_margin, button_width, button_height)
+        )
+        stop_button.setBezelStyle_(NSBezelStyleRounded)
+        stop_button.setTitle_("Stop")
+        stop_button.setAction_("stopButtonClicked:")
+        stop_button.setTarget_(self)
+        stop_button.setFont_(NSFont.boldSystemFontOfSize_(14))
+        
+        # Add buttons to the window
+        self.window.contentView().addSubview_(play_button)
+        self.window.contentView().addSubview_(pause_button)
+        self.window.contentView().addSubview_(stop_button)
+    
+    def playButtonClicked_(self, sender):
+        """Handler for play button clicks"""
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        print(f"Play button clicked at {timestamp}")
+        
+        # Record play event
+        self.player_events["PlayEvents"].append({
+            "time": timestamp,
+            "event": "Play button clicked"
+        })
+        
+        self.start_playback()
+        
+    def pauseButtonClicked_(self, sender):
+        """Handler for pause button clicks"""
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        print(f"Pause button clicked at {timestamp}")
+        
+        # Record pause event
+        self.player_events["PauseEvents"].append({
+            "time": timestamp,
+            "event": "Pause button clicked"
+        })
+        
+        self.pause_playback()
+        
+    def stopButtonClicked_(self, sender):
+        """Handler for stop button clicks"""
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        print(f"Stop button clicked at {timestamp}")
+        
+        # Record stop event
+        if "StopEvents" not in self.player_events:
+            self.player_events["StopEvents"] = []
+            
+        self.player_events["StopEvents"].append({
+            "time": timestamp,
+            "event": "Stop button clicked"
+        })
+        
+        self.save_metrics_to_json()
+        self.cleanup()
+        NSApplication.sharedApplication().terminate_(None)
         
     def create_player_view(self):
         """Create a window to display the video"""
         try:
-            # Import AppKit for UI elements
-            from AppKit import NSWindow, NSView, NSRect, NSApp, NSApplication
-            from AppKit import NSApplicationActivationPolicyRegular, NSWindowCollectionBehaviorMoveToActiveSpace
-            
             # Initialize the application
             NSApplication.sharedApplication()
             NSApp.setActivationPolicy_(NSApplicationActivationPolicyRegular)
             
-            # Create a window
+            # Create a window with extra height for controls
+            control_area_height = 60
+            window_width = 800
+            video_height = 450
+            window_height = video_height + control_area_height
+            
             self.window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
-                NSRect((200, 200), (800, 450)),  # Position and size - 16:9 aspect ratio
+                NSRect((200, 200), (window_width, window_height)),
                 15,  # NSTitledWindowMask | NSClosableWindowMask | NSResizableWindowMask | NSMiniaturizableWindowMask
                 2,   # NSBackingStoreBuffered
                 False
@@ -213,18 +293,20 @@ class HLSPlayer:
             
             # Create a player layer view
             self.player_layer = AVPlayerLayer.playerLayerWithPlayer_(self.player)
-            self.player_layer.setFrame_(((0, 0), (800, 450)))
+            self.player_layer.setFrame_(((0, control_area_height), (window_width, video_height)))
             
-            # Get the window's content view
+            # Add player layer to window content view
             content_view = self.window.contentView()
-            self.layer_view = NSView.alloc().initWithFrame_(NSRect((0, 0), (800, 450)))
+            self.layer_view = NSView.alloc().initWithFrame_(NSRect((0, control_area_height), (window_width, video_height)))
             self.layer_view.setWantsLayer_(True)
             self.layer_view.layer().addSublayer_(self.player_layer)
             content_view.addSubview_(self.layer_view)
             
+            # Add control buttons
+            self.create_control_buttons()
+            
             # Setup window close notification
-            nc = NSNotificationCenter.defaultCenter()
-            nc.addObserver_selector_name_object_(
+            NSNotificationCenter.defaultCenter().addObserver_selector_name_object_(
                 self,
                 "windowWillClose:",
                 "NSWindowWillCloseNotification",
@@ -258,14 +340,7 @@ class HLSPlayer:
         
         # If this is the last player instance, terminate the application
         if not _player_registry:
-            from AppKit import NSApplication
             NSApplication.sharedApplication().terminate_(None)
-            
-            # Force quit after a delay if normal termination doesn't work
-            from Foundation import NSProcessInfo
-            import os
-            pid = NSProcessInfo.processInfo().processIdentifier()
-            threading.Timer(1.0, lambda: os.system(f"kill -TERM {pid}")).start()
         
     def load_stream(self, url: str) -> bool:
         """
@@ -287,8 +362,11 @@ class HLSPlayer:
             self.current_item = AVPlayerItem.playerItemWithAsset_(asset)
             self.player.replaceCurrentItemWithPlayerItem_(self.current_item)
             
-            # Setup stream monitoring
-            self._setup_monitoring()
+            # Setup stream monitoring with a timer that fires every 5 seconds
+            self.timer = NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
+                5.0, self, "timerFired:", None, True
+            )
+            
             print(f"Stream loaded from URL: {url}")
             
             # Start metrics discovery in a background thread
@@ -299,7 +377,7 @@ class HLSPlayer:
             print(f"Error loading stream: {e}")
             return False
     
-    def discover_metrics_with_retries(self, max_attempts=10, delay=2):
+    def discover_metrics_with_retries(self, max_attempts=5, delay=2):
         """Try to discover metrics multiple times with delays"""
         attempts = 0
         
@@ -308,14 +386,12 @@ class HLSPlayer:
             self.discover_available_metrics()
             
             if self.available_metrics:
-                print("Metrics discovered successfully!")
-                print(f"Available HLS metrics: {', '.join(sorted(self.available_metrics))}")
+                print(f"Metrics discovered successfully! Available: {', '.join(sorted(self.available_metrics))}")
                 break
                 
             attempts += 1
             
             if attempts < max_attempts and self.is_running:
-                print(f"Waiting {delay} seconds before next attempt...")
                 time.sleep(delay)
     
     def discover_available_metrics(self) -> Set[str]:
@@ -330,71 +406,39 @@ class HLSPlayer:
         
         try:
             access_log = self.current_item.accessLog()
-            if access_log:
-                events = access_log.events()
-                if events and len(events) > 0:
-                    latest_event = events[-1]
-                    
-                    # Only try our known AV metrics instead of every method
-                    for method in self.KNOWN_AV_METRICS:
+            if access_log and access_log.events() and len(access_log.events()) > 0:
+                latest_event = access_log.events()[-1]
+                
+                # Check each metric in our known list
+                for method in self.KNOWN_AV_METRICS:
+                    if hasattr(latest_event, method) and callable(getattr(latest_event, method)):
                         try:
-                            # Get the method object
-                            if hasattr(latest_event, method):
-                                method_obj = getattr(latest_event, method)
-                                
-                                # Check if it's callable
-                                if callable(method_obj):
-                                    # Try calling it
-                                    value = method_obj()
-                                    print(f"AV Metric {method} returned: {value}")
-                                    if value is not None:
-                                        self.available_metrics.add(method)
-                        except Exception as e:
-                            # Silently skip this one
+                            value = getattr(latest_event, method)()
+                            if value is not None:
+                                self.available_metrics.add(method)
+                        except Exception:
                             pass
-                    
-                    print(f"Discovered {len(self.available_metrics)} available metrics")
-                else:
-                    print("No access log events found yet")
+                
+                print(f"Discovered {len(self.available_metrics)} available metrics")
             else:
-                print("No access log available yet")
+                print("No access log events found yet")
         except Exception as e:
             print(f"Error discovering metrics: {e}")
         
         return self.available_metrics
-            
-    def _setup_monitoring(self):
-        """Configure monitoring for adaptive bitrate streaming"""
-        if not self.current_item:
-            return
-            
-        # For simplicity, use a timer-based approach instead of notification
-        # This avoids issues with PyObjC selector/notification handling
-        
-        # Create a timer that fires every 5 seconds
-        self.timer = NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
-            5.0,          # Interval in seconds
-            self,         # Target (self)
-            "timerFired:", # Selector
-            None,         # User info (None)
-            True          # Repeats
-        )
-        
-        print("Set up periodic stream monitoring")
     
     def timerFired_(self, timer):
-        """Called when the timer fires"""
+        """Called when the timer fires to update metrics"""
         if not self.is_running:
             return
             
         try:
-            # Get current stream info
-            info = self.get_current_stream_info()
-            
-            # Print current metrics report
+            # Get current stream info and print metrics report
+            self.get_current_stream_info()
             print("\n" + self.get_all_metrics_report())
         except Exception as e:
             print(f"Error in timer: {e}")
+    
     
     def get_available_bitrates(self) -> List[int]:
         """Return list of available bitrates in the stream"""
@@ -404,11 +448,9 @@ class HLSPlayer:
         bitrates = []
         try:
             asset = self.current_item.asset()
-            # Get video tracks
             video_tracks = asset.tracksWithMediaType_("vide")
             
             for track in video_tracks:
-                # Get track's video parameters
                 format_descriptions = track.formatDescriptions()
                 if format_descriptions and len(format_descriptions) > 0:
                     format_desc = format_descriptions[0]
@@ -443,28 +485,26 @@ class HLSPlayer:
             
         try:
             access_log = self.current_item.accessLog()
-            if access_log:
-                events = access_log.events()
-                if events and len(events) > 0:
-                    latest_event = events[-1]
-                    
-                    # Process each discovered metric
-                    metrics = {}
-                    
-                    # Add all available metrics we've discovered
-                    for metric in self.available_metrics:
-                        try:
-                            method_obj = getattr(latest_event, metric)
-                            value = method_obj()
-                            # Only add non-None values
-                            if value is not None:
-                                metrics[metric] = value
-                        except:
-                            pass
-                    
-                    # Update our metrics
-                    self.stream_metrics.update(metrics)
-        except Exception as e:
+            if access_log and access_log.events() and len(access_log.events()) > 0:
+                latest_event = access_log.events()[-1]
+                
+                # Process each discovered metric
+                metrics = {}
+                
+                # Add all available metrics we've discovered
+                for metric in self.available_metrics:
+                    try:
+                        method_obj = getattr(latest_event, metric)
+                        value = method_obj()
+                        # Only add non-None values
+                        if value is not None:
+                            metrics[metric] = value
+                    except Exception:
+                        pass
+                
+                # Update our metrics
+                self.stream_metrics.update(metrics)
+        except Exception:
             pass
         
         return self.stream_metrics
@@ -489,7 +529,6 @@ class HLSPlayer:
             time_in_seconds (float): Time to seek to in seconds
         """
         if is_macos and self.player and self.is_running:
-            # Create CMTime for seeking
             time_scale = 1000  # Higher precision
             try:
                 target_time = objc.lookUpClass("CMTimeMake")(int(time_in_seconds * time_scale), time_scale)
@@ -520,73 +559,129 @@ class HLSPlayer:
         }
         
         # Print metrics by category
-        for category, metric_names in categories.items():
-            # Check if we have any metrics in this category
-            has_metrics = any(metric in info for metric in metric_names)
+        for category_name, metric_names in categories.items():
+            metrics_in_category = [m for m in metric_names if m in info]
             
-            if has_metrics:
-                report += f"\n{category}:\n"
-                for metric in metric_names:
-                    if metric in info:
-                        value = info[metric]
-                        # Format bitrates as Mbps
-                        if 'bitrate' in metric.lower() and isinstance(value, (int, float)) and value > 1000:
-                            report += f"  {metric}: {value/1000000:.3f} Mbps\n"
-                        else:
-                            report += f"  {metric}: {value}\n"
+            if metrics_in_category:
+                report += f"\n{category_name}:\n"
+                for metric in metrics_in_category:
+                    value = info[metric]
+                    # Format bitrates as Mbps
+                    if 'bitrate' in metric.lower() and isinstance(value, (int, float)) and value > 1000:
+                        report += f"  ├─ {metric}: {value/1000000:.3f} Mbps\n"
+                    else:
+                        report += f"  ├─ {metric}: {value}\n"
+        
+        # Add player events if any exist
+        if hasattr(self, 'player_events') and (self.player_events["PlayEvents"] or self.player_events["PauseEvents"]):
+            report += "\nPlayer Events:\n"
+            
+            if self.player_events["PlayEvents"]:
+                report += "  ├─ Play Events:\n"
+                for event in self.player_events["PlayEvents"][-2:]:  # Show only last 2 events
+                    report += f"  │  ├─ {event['time']}: {event['event']}\n"
+                    
+            if self.player_events["PauseEvents"]:
+                report += "  ├─ Pause Events:\n"
+                for event in self.player_events["PauseEvents"][-2:]:  # Show only last 2 events
+                    report += f"  │  ├─ {event['time']}: {event['event']}\n"
         
         # Add any metrics that didn't fit into categories
-        other_metrics = [m for m in info if not any(m in category_metrics 
-                                                 for category_metrics in categories.values())]
-        if other_metrics:
+        uncategorized_metrics = [m for m in info if not any(m in category_metrics 
+                                                for category_metrics in categories.values())]
+        if uncategorized_metrics:
             report += "\nOther Metrics:\n"
-            for metric in sorted(other_metrics):
+            for metric in sorted(uncategorized_metrics):
                 value = info[metric]
-                report += f"  {metric}: {value}\n"
+                report += f"  ├─ {metric}: {value}\n"
                 
         return report
-
     def get_metrics_as_json(self) -> Dict:
         """
-        Get the metrics in a JSON-friendly format with proper conversions
+        Get the metrics in a properly structured JSON-friendly format
         
         Returns:
-            Dict containing metrics ready for JSON serialization
+            Dict containing categorized metrics ready for JSON serialization
         """
+        # Get current stream info
         info = self.get_current_stream_info()
-        metrics = {}
         
-        # Process all metrics into a suitable format for JSON
+        # Create structured output with categories
+        structured_metrics = {
+            "Bitrate": {},
+            "Duration": {},
+            "Statistics": {},
+            "Server": {}
+        }
+        
+        # Define metric categories
+        categories = {
+            'Bitrate': ['indicatedBitrate', 'indicatedAverageBitrate', 'observedBitrate', 
+                       'averageVideoBitrate', 'averageAudioBitrate'],
+            'Duration': ['durationWatched', 'transferDuration', 'startupTime', 
+                        'segmentsDownloadedDuration'],
+            'Statistics': ['numberOfSegmentsDownloaded', 'numberOfBytesTransferred',
+                          'numberOfStalls', 'numberOfServerAddressChanges',
+                          'numberOfMediaRequests', 'numberOfDroppedVideoFrames'],
+            'Server': ['serverAddress', 'playbackSessionID']
+        }
+        
+        # Categorize metrics
         for key, value in info.items():
-            # Convert bitrates to Mbps
-            if 'bitrate' in key.lower() and isinstance(value, (int, float)) and value > 1000:
-                metrics[key] = round(value / 1000000, 3)  # To Mbps with 3 decimal places
-            else:
-                metrics[key] = value
-        
-        # Add some computed/aggregated metrics
-        if 'numberOfStalls' in metrics:
-            metrics['BufferingEvents'] = metrics['numberOfStalls']
+            # Find which category this metric belongs to
+            assigned = False
+            for category, metrics in categories.items():
+                if key in metrics:
+                    # Convert bitrates to Mbps for readability
+                    if 'bitrate' in key.lower() and isinstance(value, (int, float)) and value > 1000:
+                        structured_metrics[category][key] = round(value / 1000000, 3)
+                    else:
+                        structured_metrics[category][key] = value
+                    assigned = True
+                    break
             
-        if 'startupTime' in metrics:
-            metrics['InitialBufferingTime'] = round(metrics['startupTime'], 2)
+            # If not assigned to any category, put in Other
+            if not assigned:
+                if "Other" not in structured_metrics:
+                    structured_metrics["Other"] = {}
+                structured_metrics["Other"][key] = value
         
-        return metrics
+        # Add computed metrics
+        if 'numberOfStalls' in info:
+            structured_metrics['Statistics']['BufferingEvents'] = info['numberOfStalls']
+            
+        if 'startupTime' in info:
+            structured_metrics['Duration']['InitialBufferingTime'] = round(info['startupTime'], 2)
+        
+        # Add player event tracking metrics
+        if hasattr(self, 'player_events') and (
+            self.player_events["PlayEvents"] or 
+            self.player_events["PauseEvents"]
+        ):
+            structured_metrics['PlayerEvents'] = {
+                "PlayCount": len(self.player_events["PlayEvents"]),
+                "PauseCount": len(self.player_events["PauseEvents"]),
+                "PlayEvents": self.player_events["PlayEvents"],
+                "PauseEvents": self.player_events["PauseEvents"]
+            }
+        
+        # Remove empty categories
+        return {k: v for k, v in structured_metrics.items() if v}
         
     def save_metrics_to_json(self):
-        """Save the current metrics to the analysis_output.json file"""
-        if not self.available_metrics:
+        """Save the current metrics to the analysis_output.json file with proper structure"""
+        if not self.available_metrics and not hasattr(self, 'player_events'):
             print("No metrics available to save")
             return
             
         try:
-            # Get the path to the output JSON file in the output directory
+            # Get the path to the output JSON file
             output_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 
                                       'output', 'analysis_output.json')
             
             print(f"Saving metrics to {output_path}")
             
-            # Get metrics in JSON-friendly format
+            # Get metrics in structured format
             av_metrics = self.get_metrics_as_json()
             
             # Read the existing JSON file
@@ -594,13 +689,12 @@ class HLSPlayer:
                 with open(output_path, 'r') as f:
                     data = json.load(f)
             except (FileNotFoundError, json.JSONDecodeError):
-                # If file doesn't exist or is invalid, create a new data structure
                 data = {}
             
-            # Add or update the AVFoundation metrics section
+            # Update the AVFoundation metrics section with structured data
             data['AVFoundation_Metrics'] = av_metrics
             
-            # Write the updated data back to the file
+            # Write the updated data back to the file with indentation
             with open(output_path, 'w') as f:
                 json.dump(data, f, indent=4)
             
@@ -618,8 +712,6 @@ class HLSPlayer:
         """Run the application event loop with improved termination handling"""
         if is_macos:
             try:
-                from AppKit import NSApplication
-                
                 # Set an AppKit terminate notification handler
                 NSNotificationCenter.defaultCenter().addObserver_selector_name_object_(
                     self,
@@ -638,16 +730,12 @@ class HLSPlayer:
                 print(f"Error in app loop: {e}")
                 self.cleanup()
 
-# Example usage
 def main():
     if not is_macos:
         print("This player requires macOS to run")
         return
         
     # Get URL from config.json or use default
-    import json
-    import os
-    
     try:
         config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'config.json')
         with open(config_path, 'r') as config_file:
@@ -655,8 +743,7 @@ def main():
             url = config.get('m3u8_url')
             if not url:
                 raise ValueError("No m3u8_url found in config.json")
-    except Exception as e:
-        print(f"Error loading config: {e}")
+    except Exception:
         # Use a reliable default
         url = "https://demo.unified-streaming.com/k8s/features/stable/video/tears-of-steel/tears-of-steel.ism/.m3u8"
     
@@ -667,7 +754,7 @@ def main():
         player.start_playback()
         
         # Display some info after a short delay
-        time.sleep(3)  # Give time for stream to initialize
+        time.sleep(2)
         
         # Try to get bitrates
         bitrates = player.get_available_bitrates()

@@ -88,7 +88,8 @@ def main():
     """Main function to run the analysis"""
     try:
         # Load the M3U8 URL from config.json
-        with open('config.json', 'r') as config_file:
+        config_path = 'config.json'  # Keep using the root path for config.json
+        with open(config_path, 'r') as config_file:
             config = json.load(config_file)
             m3u8_url = config.get('m3u8_url')
             
@@ -99,14 +100,31 @@ def main():
         print(f"Analyzing M3U8: {m3u8_url}")
         
         # Run the M3U8 analysis
-        metrics = analyze_m3u8(m3u8_url)
+        ffprobe_metrics = analyze_m3u8(m3u8_url)
         
-        # Save the results to a JSON file
-        with open('analyze_hls_output.json', 'w') as output_file:
-            json.dump(metrics, output_file, indent=4)
+        # Create output directory if it doesn't exist
+        output_dir = 'output'
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Path to main output JSON
+        output_path = os.path.join(output_dir, 'analysis_output.json')
+        
+        # Check if the output file exists and load existing data
+        try:
+            with open(output_path, 'r') as f:
+                data = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            data = {}
+        
+        # Add or update the FFprobe metrics
+        data['FFprobe_Metrics'] = ffprobe_metrics
+        
+        # Save the updated file
+        with open(output_path, 'w') as output_file:
+            json.dump(data, output_file, indent=4)
             
         print("Analysis complete")
-        print("Results saved to analyze_hls_output.json")
+        print(f"Results saved to {output_path}")
         
     except Exception as e:
         print(f"Error: {str(e)}")

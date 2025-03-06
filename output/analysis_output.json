@@ -1,11 +1,109 @@
 {
-    "Highest Bitrate (Mbps)": 2.468,
-    "Average Bitrate (Mbps)": 2.0975,
-    "Lowest Bitrate (Mbps)": 1.727,
-    "Codec": "mp4a.40.2,avc1.100.40",
-    "Resolution": "1680x750",
-    "Frame Rate": "24",
-    "Video Range": "SDR",
-    "Network Check": "All segments available",
-    "Failed Segments": []
+    "FFprobe_Metrics": {
+        "Highest Bitrate (Mbps)": 2.468,
+        "Average Bitrate (Mbps)": 2.0975,
+        "Lowest Bitrate (Mbps)": 1.727,
+        "Codec": "mp4a.40.2,avc1.100.40",
+        "Resolution": "1680x750",
+        "Frame Rate": "24",
+        "Video Range": "SDR",
+        "Network Check": "All segments available",
+        "Failed Segments": []
+    },
+    "AVFoundation_Metrics": {
+        "Bitrate": {
+            "observedBitrate": 19.065,
+            "averageVideoBitrate": 2.165,
+            "averageAudioBitrate": 0.0,
+            "indicatedBitrate": 2.468
+        },
+        "Duration": {
+            "transferDuration": 12.532429874000002,
+            "startupTime": 5.324254035949707,
+            "durationWatched": 10.726086020469666,
+            "segmentsDownloadedDuration": 140.0,
+            "InitialBufferingTime": 5.32
+        },
+        "Statistics": {
+            "numberOfDroppedVideoFrames": 0,
+            "numberOfSegmentsDownloaded": 35,
+            "numberOfMediaRequests": 35,
+            "numberOfStalls": 0,
+            "numberOfBytesTransferred": 37880872,
+            "numberOfServerAddressChanges": 0,
+            "BufferingEvents": 0
+        },
+        "Server": {
+            "serverAddress": "46.23.86.222",
+            "playbackSessionID": "E31E2DBA-F8AB-42A0-BADE-E3DF2C35BB5D"
+        },
+        "PlayerEvents": {
+            "PlayCount": 8,
+            "PauseCount": 7,
+            "PlayEvents": [
+                {
+                    "time": "2025-03-06 11:55:38",
+                    "event": "Play button clicked"
+                },
+                {
+                    "time": "2025-03-06 11:55:38",
+                    "event": "Play button clicked"
+                },
+                {
+                    "time": "2025-03-06 11:55:38",
+                    "event": "Play button clicked"
+                },
+                {
+                    "time": "2025-03-06 11:55:38",
+                    "event": "Play button clicked"
+                },
+                {
+                    "time": "2025-03-06 11:55:39",
+                    "event": "Play button clicked"
+                },
+                {
+                    "time": "2025-03-06 11:55:42",
+                    "event": "Play button clicked"
+                },
+                {
+                    "time": "2025-03-06 11:55:43",
+                    "event": "Play button clicked"
+                },
+                {
+                    "time": "2025-03-06 11:55:44",
+                    "event": "Play button clicked"
+                }
+            ],
+            "PauseEvents": [
+                {
+                    "time": "2025-03-06 11:55:40",
+                    "event": "Pause button clicked"
+                },
+                {
+                    "time": "2025-03-06 11:55:40",
+                    "event": "Pause button clicked"
+                },
+                {
+                    "time": "2025-03-06 11:55:41",
+                    "event": "Pause button clicked"
+                },
+                {
+                    "time": "2025-03-06 11:55:41",
+                    "event": "Pause button clicked"
+                },
+                {
+                    "time": "2025-03-06 11:55:43",
+                    "event": "Pause button clicked"
+                },
+                {
+                    "time": "2025-03-06 11:55:43",
+                    "event": "Pause button clicked"
+                },
+                {
+                    "time": "2025-03-06 11:55:46",
+                    "event": "Pause button clicked"
+                }
+            ]
+        }
+    }
 }
