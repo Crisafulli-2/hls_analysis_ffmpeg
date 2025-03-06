@@ -1,0 +1,11 @@
+{
+    "Highest Bitrate (Mbps)": 2.468,
+    "Average Bitrate (Mbps)": 2.0975,
+    "Lowest Bitrate (Mbps)": 1.727,
+    "Codec": "mp4a.40.2,avc1.100.40",
+    "Resolution": "1680x750",
+    "Frame Rate": "24",
+    "Video Range": "SDR",
+    "Network Check": "All segments available",
+    "Failed Segments": []
+}
