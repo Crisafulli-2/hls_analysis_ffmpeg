@@ -112,15 +112,50 @@ Metrics are saved to `analyze_hls_output.json` in the following format:
 
 ```json
 {
-    "AVFoundation_Metrics": {
-        "indicatedBitrate": 2.45,
-        "observedBitrate": 2.37,
-        "numberOfStalls": 0,
-        "startupTime": 0.354,
-        "...": "..."
-    },
     "FFprobe_Metrics": {
-        "...": "..."
+        "Highest Bitrate (Mbps)": 2.468,
+        "Average Bitrate (Mbps)": 2.097,
+        "Lowest Bitrate (Mbps)": 1.727,
+        "Codec": "mp4a.40.2,avc1.100.40",
+        "Resolution": "1680x750",
+        "Frame Rate": "24",
+        "Video Range": "SDR",
+        "Network Check": "All segments available",
+        "Failed Segments": []
+    },
+    "AVFoundation_Metrics": {
+        "Bitrate": {
+            "observedBitrate": 19.065,
+            "averageVideoBitrate": 2.165,
+            "averageAudioBitrate": 0.0,
+            "indicatedBitrate": 2.468
+        },
+        "Duration": {
+            "transferDuration": 12.532,
+            "startupTime": 5.324,
+            "durationWatched": 10.726,
+            "segmentsDownloadedDuration": 140.0,
+            "InitialBufferingTime": 5.32
+        },
+        "Statistics": {
+            "numberOfDroppedVideoFrames": 0,
+            "numberOfSegmentsDownloaded": 35,
+            "numberOfMediaRequests": 35,
+            "numberOfStalls": 0,
+            "numberOfBytesTransferred": 37880872,
+            "numberOfServerAddressChanges": 0,
+            "BufferingEvents": 0
+        },
+        "Server": {
+            "serverAddress": "46.23.86.222",
+            "playbackSessionID": "E31E2DBA-F8AB-42A0-BADE-E3DF2C35BB5D"
+        },
+        "PlayerEvents": {
+            "PlayCount": 8,
+            "PauseCount": 7,
+            "PlayEvents": [ ... ],
+            "PauseEvents": [ ... ]
+        }
     }
 }
 ```
